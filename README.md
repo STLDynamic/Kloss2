@@ -20,10 +20,23 @@ Data sparas automatiskt i localStorage för aktuell webbläsare och webbplats. J
 
 ## Tester
 
-`npm test` kör åtta testfall med Node.js 24, utan beroenden. De omfattar gemensamt lager, täckning, begränsande komponenter, receptsummering, ordning, leveranser, ISO-år, saldobyte, aktuell veckas resterande dagar, tomt/0 och JSON-validering.
+`npm test` kör tolv testfall med Node.js 24, utan beroenden. De omfattar gemensamt lager, täckning, begränsande komponenter, receptsummering, ordning, leveranser, ISO-år, saldobyte, aktuell veckas resterande dagar, tomt/0 och JSON-validering.
 
 `node tests/browser.cjs` kör webbläsartest med en separat installerad Playwright och Chromium (valfri sökväg via `CHROMIUM_PATH`). Starta först servern på port 8000. Vid installation utanför projektet kan `NODE_PATH` peka på dess node_modules. Testet använder en isolerad webbläsarprofil och kontrollerar formulär, kalenderändring, omladdning, export/import, ogiltig import och mobilens horisontella rullning med fast produktkolumn. Testfiler och skärmbild skrivs till `/tmp`.
 
 ## Publicering
 
 `.github/workflows/pages.yml` testar och publicerar endast webbplatsens fyra filer vid push till `main`. I GitHub Settings → Pages ska GitHub Actions vara publiceringskälla. Automatisk aktivering via workflow kan kräva administratörsbehörighet; välj då källan i inställningarna och kör arbetsflödet igen. Avsedd adress: https://stldynamic.github.io/Kloss2/ .
+
+
+## Märkningslager
+
+Varje plastkloss har ett totalt saldo samt valfria underkategorier med namn och antal redan märkta klossar. Summan av märkta antal får inte överstiga totalsaldot. Samtliga gäller samma saldodatum. Ange antingen ett enskilt stämpelnamn eller en fullständig kombination; varje fysisk kloss hör till en enda kategori.
+
+Exempel: totalt 90 klossar, varav 30 med V-EMB. Receptet innehåller 6 med V-EMB och 3 utan märkningskrav. Planen 10 pallar kräver 90 klossar, varav 60 märkta: 30 finns och 30 återstår att märka. Märkta klossar är inte extra material.
+
+Märkningslager delas kronologiskt och enligt produktordningen. Kalendern visar behov, reserverade redan märkta antal, antal att märka och hela pallar med befintligt material och märkning. Prognosen bokför ingen stämpling. Uppdatera total- och märkningssaldo tillsammans efter inventering; datumet gäller båda. Leveranser betraktas som omärkta. Materialprognosen behåller sin tidigare betydelse och betraktar samtliga klossar av samma typ som material. Om andra märkta varianter måste reserveras för materialbehov tas dessa bort från senare märkningsprognoser i registrerad ordning. Kontrollera då praktiskt möjligheten att märka om dem. Att märka är totalt arbetsbehov och kan inkludera material som ännu saknas.
+
+Äldre Kloss2-kopior utan märkningsfält fungerar oförändrat. JSON-export/import bevarar nya kategorier och receptkrav. En kategori som används i recept får inte tas bort eller byta namn utan att receptet först ändras. Ogiltiga formulär återställer föregående data.
+
+Webbläsartestet verifierar också märkta saldon, recept, prognos och JSON-rundtur med märkningar. Alternativ testserver kan väljas med `TEST_URL`.
