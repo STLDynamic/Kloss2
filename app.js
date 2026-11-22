@@ -18,9 +18,53 @@ function blockForm(b){
  $('#add-mark').onclick=()=>$('#marked-rows').insertAdjacentHTML('beforeend',markedRow());$('#marked-rows').onclick=e=>{if(e.target.classList.contains('remove-mark'))e.target.closest('.marked-row').remove()};
 }
 function markOptions(block,selected=''){return `<option value="">Ingen märkning krävs</option>`+(state.blocks.find(b=>b.id===block)?.marked||[]).map(m=>`<option value="${esc(m.name)}" ${m.name===selected?'selected':''}>${esc(m.name)}</option>`).join('')}
-function productForm(p){if(!state.blocks.length){$('#message').textContent='Lägg först till en plastkloss.';return}const row=r=>`<div class="recipe-row"><select name="block" aria-label="Plastkloss">${state.blocks.map(b=>`<option value="${b.id}" ${r?.block===b.id?'selected':''}>${esc(b.number)} · ${esc(b.name)}</option>`).join('')}</select><input aria-label="Stycken per pall" name="qty" required type="number" min="1" max="100000000" value="${r?.qty||1}"><select name="mark" aria-label="Märkning">${markOptions(r?.block||state.blocks[0].id,r?.mark)}</select><button type="button" class="remove">×</button></div>`;
- modal(`<h2>${p?'Redigera produkt':'Ny produkt'}</h2>${text('name',p?.name||'','Produktnamn')}<p>Klossar per pall (st). För 9 klossar med 6 märkta: lägg till en rad med 6 och välj märkning, samt en rad med 3 utan märkningskrav. Summan är fortfarande 9.</p><div id="recipe">${(p?.recipe||[null]).map(row).join('')}</div><button type="button" id="addrow">Lägg till kloss</button>`,f=>{const name=f.get('name').trim(),rows=f.getAll('block').map((block,i)=>({block,qty:+f.getAll('qty')[i],mark:f.getAll('mark')[i]||''}));if(!rows.length||!name)throw Error();const data={id:p?.id||id(),name,recipe:rows};if(p)Object.assign(state.products.find(x=>x.id===p.id),data);else state.products.push(data)});
- $('#addrow').onclick=()=>$('#recipe').insertAdjacentHTML('beforeend',row());$('#recipe').onchange=e=>{if(e.target.name==='block')e.target.parentElement.querySelector('[name=mark]').innerHTML=markOptions(e.target.value)};$('#recipe').onclick=e=>{if(e.target.classList.contains('remove'))e.target.parentElement.remove()};
+function productForm(product) {
+ if (!state.blocks.length) {
+  $('#message').textContent = 'Lägg först till en plastkloss.';
+  return;
+ }
+
+ function recipeRow({block = state.blocks[0].id, qty = 1, mark = ''} = {}) {
+  const blocks = state.blocks.map(b =>
+   `<option value="${b.id}" ${block === b.id ? 'selected' : ''}>${esc(b.number)} · ${esc(b.name)}</option>`
+  ).join('');
+  return `<div class="recipe-row">
+   <label>Plastkloss<select name="block">${blocks}</select></label>
+   <label>Stycken per pall<input name="qty" required type="number" min="1" max="100000000" value="${qty}"></label>
+   <label>Märkning<select name="mark">${markOptions(block, mark)}</select></label>
+   <button type="button" class="remove" aria-label="Ta bort receptrad">×</button>
+  </div>`;
+ }
+
+ modal(`<h2>${product ? 'Redigera produkt' : 'Ny produkt'}</h2>
+  ${text('name', product?.name || '', 'Produktnamn')}
+  <p>Lägg till en rad per märkning, även när klossarna har samma storlek. En pall kan till exempel ha tre rader med 75 mm: 2 V-EMB, 2 nr. 5 och 2 SE.</p>
+  <div id="recipe">${(product?.recipe || [{}]).map(recipeRow).join('')}</div>
+  <button type="button" id="addrow">+ Lägg till kloss / märkning</button>
+  <p class="muted">Saknas en märkning? Lägg till den för rätt kloss under Plastklossar → Uppdatera saldo. Ange 0 om inga är märkta ännu.</p>`, form => {
+  const name = form.get('name').trim();
+  const quantities = form.getAll('qty');
+  const marks = form.getAll('mark');
+  const rows = form.getAll('block').map((block, i) => ({block, qty: Number(quantities[i]), mark: marks[i]}));
+  if (!rows.length || !name) throw Error();
+  const data = {id: product?.id || id(), name, recipe: rows};
+  if (product) Object.assign(state.products.find(p => p.id === product.id), data);
+  else state.products.push(data);
+ });
+
+ const recipeForm = $('#recipe');
+ $('#addrow').onclick = () => {
+  const previousBlock = recipeForm.lastElementChild?.querySelector('[name=block]').value;
+  recipeForm.insertAdjacentHTML('beforeend', recipeRow({block: previousBlock}));
+  recipeForm.lastElementChild.querySelector('[name=qty]').focus();
+ };
+ recipeForm.onchange = event => {
+  if (event.target.name !== 'block') return;
+  event.target.closest('.recipe-row').querySelector('[name=mark]').innerHTML = markOptions(event.target.value);
+ };
+ recipeForm.onclick = event => {
+  if (event.target.classList.contains('remove')) event.target.closest('.recipe-row').remove();
+ };
 }
 function stampingHtml(r){if(!r.stamping.length)return '';return `<div class="stamping"><strong>Märkning</strong>${r.stamping.map(m=>`<p>${esc(state.blocks.find(b=>b.id===m.block).number)} · ${esc(m.name)}<br>Behov: ${m.need} st · Redan märkta: ${m.prepared} st<br><b>Att märka: ${m.toStamp} st</b></p>`).join('')}<small>${r.ready} hela pallar med befintlig märkning och material. Att märka är arbetsbehov; kontrollera materialbrist separat.</small></div>`}
 function render(){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));$('#content').innerHTML='';
