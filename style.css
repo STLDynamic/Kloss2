@@ -21,3 +21,26 @@
  padding-block: 4px;
 }
 .stamping summary:hover { text-decoration: underline; }
+
+.stock-panel {
+ padding: 16px;
+ margin-bottom: 20px;
+ background: #fff;
+ border: 1px solid #d6dfd4;
+ border-radius: 10px;
+}
+.stock-heading {
+ display: flex;
+ flex-wrap: wrap;
+ align-items: end;
+ justify-content: space-between;
+ gap: 12px;
+ margin-bottom: 12px;
+}
+.stock-heading h3, .stock-heading p, .stock-heading label { margin: 0; }
+.stock-panel p:last-child { margin-bottom: 0; }
+.stock-table :is(th, td) { min-width: 0; padding: 8px 12px; }
+.stock-table :is(th, td):first-child { position: static; min-width: 120px; }
+.stock-table td { white-space: nowrap; }
+.stock-table td small { display: block; }
+.stock-table tbody th { background: #fff; }

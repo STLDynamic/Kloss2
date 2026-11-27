@@ -1,4 +1,4 @@
-import {test} from 'node:test';import assert from 'node:assert/strict';import {forecast,week,monday,validate,recipe} from '../model.js';
+import {test} from 'node:test';import assert from 'node:assert/strict';import {forecast,projectInventory,week,monday,validate,recipe} from '../model.js';
 const base=()=>({version:1,blocks:[{id:'a',number:'A',name:'A',balance:1000,asOf:'2026-11-16'}],products:[{id:'p',name:'Artikel 2',recipe:[{block:'a',qty:600}]},{id:'q',name:'Artikel 5',recipe:[{block:'a',qty:700}]}],plans:{'2026-11-16':{p:1,q:1}},deliveries:[]});
 test('shared stock, full partial and zero coverage',()=>{let s=base(),r=forecast(s);assert.equal(r['2026-11-16/p'].possible,1);assert.equal(r['2026-11-16/q'].possible,0);assert.equal(r['2026-11-16/q'].missing.a,300);s.products[0].recipe[0].qty=100;s.plans['2026-11-16']={p:15};r=forecast(s);assert.equal(r['2026-11-16/p'].possible,10);s.blocks[0].balance=0;assert.equal(forecast(s)['2026-11-16/p'].possible,0)});
 test('limiting component and duplicate rows',()=>{const s=base();s.blocks.push({id:'b',number:'B',name:'B',balance:1,asOf:'2026-11-16'});s.products[0].recipe=[{block:'a',qty:100},{block:'a',qty:200},{block:'b',qty:2}];assert.equal(recipe(s.products[0]).a,300);assert.equal(forecast(s)['2026-11-16/p'].possible,0)});
@@ -12,3 +12,31 @@ test('marked stock is a subset: 9 blocks including 6 stamped',()=>{const s=base(
 test('shared markings follow product order and weeks without double reservation',()=>{const s=base();s.blocks[0].marked=[{name:'ISPM',balance:6}];s.products.forEach(p=>p.recipe=[{block:'a',qty:6,mark:'ISPM'}]);s.plans['2026-11-23']={p:1};const r=forecast(s);assert.equal(r['2026-11-16/p'].stamping[0].prepared,6);assert.equal(r['2026-11-16/q'].stamping[0].toStamp,6);assert.equal(r['2026-11-23/p'].stamping[0].toStamp,6)});
 test('different marks and block sizes are not interchangeable',()=>{const s=base();s.blocks.push({id:'b',number:'75',name:'75',balance:50,asOf:'2026-11-16',marked:[{name:'ISPM',balance:20}]});s.blocks[0].marked=[{name:'ISPM',balance:6},{name:'Article',balance:10}];s.products=[{id:'p',name:'P',recipe:[{block:'a',qty:6,mark:'ISPM'},{block:'b',qty:3,mark:'ISPM'}]}];s.plans={'2026-11-16':{p:2}};const r=forecast(s)['2026-11-16/p'];assert.equal(r.stamping[0].toStamp,6);assert.equal(r.stamping[1].toStamp,0);assert.equal(r.ready,1)});
 test('marked balance reset, import compatibility and invalid subsets',()=>{const s=base();assert.deepEqual(validate(JSON.parse(JSON.stringify(s))),s);s.blocks[0].marked=[{name:'ISPM',balance:1001}];assert.throws(()=>validate(s));s.blocks[0].marked=[{name:'ISPM',balance:6}];s.products=[{id:'p',name:'P',recipe:[{block:'a',qty:6,mark:'ISPM'}]}];s.blocks[0].asOf='2026-11-23';s.plans={'2026-11-16':{p:1},'2026-11-23':{p:1}};assert.deepEqual(validate(JSON.parse(JSON.stringify(s))),s);assert.equal(forecast(s)['2026-11-23/p'].stamping[0].prepared,6);s.blocks[0].marked=[];assert.throws(()=>validate(s))});
+
+test('weekly stock carries the remainder forward without treating shortages as reservations', () => {
+ const state = base();
+ state.deliveries = [{id: 'd', block: 'a', qty: 200, date: '2026-11-22'}];
+ const {plans, stock} = projectInventory(state, ['2026-11-16', '2026-11-23']);
+ assert.deepEqual(plans, forecast(state));
+ assert.deepEqual(stock['2026-11-16'].a, {
+  from: '2026-11-16', opening: 1000, deliveries: 200, demand: 1300, reserved: 1000, closing: 200
+ });
+ assert.deepEqual(stock['2026-11-23'].a, {
+  from: '2026-11-23', opening: 200, deliveries: 0, demand: 0, reserved: 0, closing: 200
+ });
+});
+
+test('weekly stock starts at the inventory date when a count is entered midweek', () => {
+ const state = base();
+ state.blocks[0].asOf = '2026-11-18';
+ state.plans = {'2026-11-16': {p: 5}};
+ state.deliveries = [
+  {id: 'old', block: 'a', qty: 400, date: '2026-11-17'},
+  {id: 'new', block: 'a', qty: 1000, date: '2026-11-18'}
+ ];
+ const {stock} = projectInventory(state, ['2026-11-09', '2026-11-16']);
+ assert.deepEqual(stock['2026-11-09'], {});
+ assert.deepEqual(stock['2026-11-16'].a, {
+  from: '2026-11-18', opening: 1000, deliveries: 1000, demand: 1800, reserved: 1800, closing: 200
+ });
+});

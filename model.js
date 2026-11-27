@@ -19,15 +19,43 @@ export function validate(s){
  for(const [key,values] of Object.entries(s.plans)){if(!day(key)||monday(key)!==key||!values||typeof values!=='object'||Array.isArray(values))fail();for(const [id,n] of Object.entries(values))if(!s.products.some(p=>p.id===id)||!int(n))fail()}
  return s;
 }
-export function forecast(s){
+export function forecast(s) {
+ return projectInventory(s).plans;
+}
+
+export function projectInventory(s, summaryWeeks = []){
  const results={},available=Object.fromEntries(s.blocks.map(b=>[b.id,0]));
  const marked=new Map(s.blocks.map(b=>[b.id,new Map()]));
- const weeks=Object.keys(s.plans).sort();if(!weeks.length)return results;
- const start=[weeks[0],...s.blocks.map(b=>b.asOf),...s.deliveries.map(d=>d.date)].sort()[0],end=add(weeks.at(-1),4);
+ const stock = Object.fromEntries(summaryWeeks.map(week => [week, {}]));
+ const weeks = Object.keys(s.plans).sort();
+ const summaryDates = [...summaryWeeks].sort();
+ const firstWeek = [weeks[0], summaryDates[0]].filter(Boolean).sort()[0];
+ if (!firstWeek) return {plans: results, stock};
+ const start = [firstWeek, ...s.blocks.map(b => b.asOf)].sort()[0];
+ const end = [
+  weeks.length && add(weeks.at(-1), 4),
+  summaryDates.length && add(summaryDates.at(-1), 6)
+ ].filter(Boolean).sort().at(-1);
  for(let day=start;day<=end;day=add(day,1)){
+  const m=monday(day),i=(new Date(day+'T00:00:00Z').getUTCDay()+6)%7;
+  const summary = stock[m];
   for(const b of s.blocks)if(day===b.asOf){available[b.id]=b.balance;marked.set(b.id,new Map((b.marked||[]).map(m=>[m.name,m.balance])))}
-  for(const d of s.deliveries)if(d.date===day&&day>=s.blocks.find(b=>b.id===d.block).asOf)available[d.block]+=d.qty;
-  const m=monday(day),i=(new Date(day+'T00:00:00Z').getUTCDay()+6)%7;if(i>4)continue;
+  if (summary) {
+   for (const block of s.blocks) {
+    if (day >= block.asOf && !Object.hasOwn(summary, block.id)) {
+     summary[block.id] = {from: day, opening: available[block.id], deliveries: 0, demand: 0, reserved: 0, closing: 0};
+    }
+   }
+  }
+  for (const delivery of s.deliveries) {
+   if (delivery.date !== day || day < s.blocks.find(b => b.id === delivery.block).asOf) continue;
+   available[delivery.block] += delivery.qty;
+   if (summary) summary[delivery.block].deliveries += delivery.qty;
+  }
+  if (i === 6 && summary) {
+   for (const [id, row] of Object.entries(summary)) row.closing = available[id];
+  }
+  if(i>4)continue;
   for(const p of s.products){const n=s.plans[m]?.[p.id];if(n===undefined)continue;const r=recipe(p),key=m+'/'+p.id;
    const out=results[key]??={planned:n,remaining:0,possible:0,missing:{},need:{},excluded:0,stamping:[],ready:0};
    const count=Math.floor(n/5)+(i<n%5?1:0);
@@ -51,8 +79,18 @@ export function forecast(s){
     for(const [name,balance] of stock){const used=Math.min(excess,balance);stock.set(name,balance-used);excess-=used}
    }
    out.ready+=ready;
-   for(const [id,q] of Object.entries(r)){const need=count*q;out.need[id]=(out.need[id]||0)+need;out.missing[id]=(out.missing[id]||0)+Math.max(0,need-available[id]);available[id]=Math.max(0,available[id]-need)}
+   for (const [id, quantity] of Object.entries(r)) {
+    const need = count * quantity;
+    const reserved = Math.min(need, available[id]);
+    out.need[id] = (out.need[id] || 0) + need;
+    out.missing[id] = (out.missing[id] || 0) + need - reserved;
+    available[id] -= reserved;
+    if (summary) {
+     summary[id].demand += need;
+     summary[id].reserved += reserved;
+    }
+   }
   }
  }
- return results;
+ return {plans: results, stock};
 }

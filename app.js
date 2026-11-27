@@ -1,6 +1,7 @@
-import {add,monday,week,recipe,forecast,validate} from './model.js';
+import {add,monday,week,projectInventory,validate} from './model.js';
 const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Stockholm'}).format(new Date()),key='kloss2-v1';
 let state={version:1,blocks:[],products:[],plans:{},deliveries:[]},view='calendar',offset=0,storageBlocked=false;
+let stockWeek = monday(today);
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),id=()=>crypto.randomUUID();
 try{const raw=localStorage.getItem(key);if(raw)state=validate(JSON.parse(raw))}catch{storageBlocked=true;$('#message').textContent='Sparade data kunde inte läsas. Originalet bevaras. Importera en giltig kopia för att fortsätta.'}
 function save(){if(storageBlocked){$('#saved').textContent='Inte sparat – importera en giltig kopia';return}try{localStorage.setItem(key,JSON.stringify(state));$('#saved').textContent='Sparat lokalt · '+new Date().toLocaleTimeString('sv-SE')}catch{$('#saved').textContent='Kunde inte spara – exportera en kopia nu'}}
@@ -80,11 +81,62 @@ function stampingHtml(result) {
   <small>${result.ready} hela pallar med befintlig märkning och material. Att märka är arbetsbehov. Kontrollera materialbrist separat.</small>
  </details>`;
 }
+
+function stockSummaryHtml(weeks) {
+ return `<section class="stock-panel" aria-labelledby="stock-heading">
+  <div class="stock-heading">
+   <div>
+    <p class="muted">Denna vecka · ${week(today)}</p>
+    <h3 id="stock-heading">Lagersaldo och veckoförbrukning</h3>
+   </div>
+   <label>Visa vecka<select id="stock-week">${weeks.map(date =>
+    `<option value="${date}" ${date === stockWeek ? 'selected' : ''}>${week(date)} · ${date}</option>`
+   ).join('')}</select></label>
+  </div>
+  <div id="stock-summary" aria-live="polite"></div>
+ </section>`;
+}
+
+function stockRowsHtml(summary) {
+ if (!state.blocks.length) return '<p class="muted">Lägg till plastklossar för att se lagersaldot.</p>';
+ const pieces = quantity => `${quantity.toLocaleString('sv-SE')} st`;
+ return `<div class="table-wrap">
+  <table class="stock-table" aria-label="Lagerprognos per kloss">
+   <thead><tr>
+    <th scope="col">Plastkloss</th><th scope="col">Registrerat saldo</th>
+    <th scope="col">Startsaldo</th><th scope="col">Leveranser</th>
+    <th scope="col">Planerat behov</th><th scope="col">Reserverat</th>
+    <th scope="col">Saknas</th><th scope="col">Kvar på söndag</th>
+   </tr></thead>
+   <tbody>${state.blocks.map(block => {
+    const row = Object.hasOwn(summary, block.id) ? summary[block.id] : null;
+    return `<tr><th scope="row">${esc(block.number)} · ${esc(block.name)}</th>
+     <td>${pieces(block.balance)} <small>${block.asOf}</small></td>
+     ${row ? `<td>${pieces(row.opening)}${row.from !== stockWeek ? ` <small>Från ${row.from}</small>` : ''}</td>
+      <td>${pieces(row.deliveries)}</td><td>${pieces(row.demand)}</td><td>${pieces(row.reserved)}</td>
+      <td>${pieces(row.demand - row.reserved)}</td><td><strong>${pieces(row.closing)}</strong></td>`
+     : '<td colspan="6">Veckan ligger före saldodatumet.</td>'}
+    </tr>`;
+   }).join('')}</tbody>
+  </table>
+ </div>
+ <p class="muted">Prognos för vald vecka. Startsaldo + leveranser − reserverat = kvar på söndag. Om saldot registrerades mitt i veckan gäller beräkningen från det datumet.</p>`;
+}
+
 function render(){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));$('#content').innerHTML='';
  if(view==='calendar'){
- const weeks=Array.from({length:8},(_,i)=>add(monday(today),(offset+i)*7)),result=forecast(state);
+ const weeks = Array.from({length:8}, (_, i) => add(monday(today), (offset + i) * 7));
+ if (!weeks.includes(stockWeek)) stockWeek = weeks.includes(monday(today)) ? monday(today) : weeks[0];
+ const {plans: result, stock} = projectInventory(state, weeks);
  $('#content').innerHTML=`<div class="toolbar"><div><h2>Veckokalender</h2><p class="muted">Gemensamt lager · prioritet uppifrån och ned · antal pallar</p></div><div><button id="prev" aria-label="Föregående vecka">←</button> <button id="now">Denna vecka</button> <button id="next" aria-label="Nästa vecka">→</button></div></div>${!state.products.length?'<div class="empty"><h3>Din första vecka börjar här.</h3><p>Lägg till plastklossar och en produkt med recept för att börja planera.</p><button id="begin" class="primary">Lägg till plastkloss</button></div>':`<div class="table-wrap"><table><thead><tr><th>Produkt / prioritet</th>${weeks.map(w=>`<th>${week(w)}<br><small>${w} – ${add(w,6)}</small></th>`).join('')}</tr></thead><tbody>${state.products.map((p,i)=>`<tr><td><strong>${esc(p.name)}</strong><p class="muted">Prioritet ${i+1}</p></td>${weeks.map(w=>{const r=result[w+'/'+p.id],n=state.plans[w]?.[p.id];return `<td class="${r?.remaining&&r.possible===0?'zero':r&&r.possible<r.remaining?'short':''}"><input aria-label="${esc(p.name)} ${week(w)}" data-week="${w}" data-product="${p.id}" type="number" min="0" max="100000000" step="1" placeholder="Ingen plan" value="${n??''}">${r?`<div class="need">${Object.entries(r.need).map(([id,q])=>`${esc(state.blocks.find(b=>b.id===id).number)}: ${q} st`).join('<br>')}</div><progress max="${r.remaining||1}" value="${r.remaining?r.possible:n===0?1:0}"></progress><strong>${r.possible} / ${r.remaining} hela pallar</strong><div class="missing">${Object.entries(r.missing).filter(([,q])=>q>0).map(([id,q])=>`Saknas ${esc(state.blocks.find(b=>b.id===id).number)}: ${q} st`).join('<br>')}</div>${stampingHtml(r)}${r.excluded?`<p class="muted">${r.excluded} pallar före saldodatum undantas.</p>`:''}${n===0?'<p class="muted">Ingen produktion planerad (0)</p>':''}`:'<p class="muted">Ingen plan</p>'}</td>`}).join('')}</tr>`).join('')}</tbody></table></div>`}`;
- $('#prev').onclick=()=>{offset--;render()};$('#next').onclick=()=>{offset++;render()};$('#now').onclick=()=>{offset=0;render()};if($('#begin'))$('#begin').onclick=()=>blockForm();
+ $('#content').querySelector('.toolbar').insertAdjacentHTML('afterend', stockSummaryHtml(weeks));
+ const showStock = () => { $('#stock-summary').innerHTML = stockRowsHtml(stock[stockWeek]); };
+ showStock();
+ $('#stock-week').onchange = event => {
+  stockWeek = event.target.value;
+  showStock();
+ };
+ $('#prev').onclick=()=>{offset--;render()};$('#next').onclick=()=>{offset++;render()};$('#now').onclick=()=>{offset=0;stockWeek=monday(today);render()};if($('#begin'))$('#begin').onclick=()=>blockForm();
  document.querySelectorAll('[data-week]').forEach(input=>input.onchange=()=>{if(!input.checkValidity()){input.reportValidity();return}const w=input.dataset.week,p=input.dataset.product;state.plans[w]??={};if(input.value==='')delete state.plans[w][p];else state.plans[w][p]=+input.value;save();render()});
  }else if(view==='blocks'){
  $('#content').innerHTML=`<div class="toolbar"><h2>Plastklossar</h2><button id="new" class="primary">Lägg till plastkloss</button></div>${state.blocks.map(b=>`<div class="card"><div><h3>${esc(b.number)} · ${esc(b.name)}</h3><span class="muted">Saldo vid början av ${b.asOf}</span></div><div><strong>${b.balance.toLocaleString('sv-SE')} st totalt</strong><p class="muted">${(b.marked||[]).map(m=>`${esc(m.name)}: ${m.balance} st`).join('<br>')||'Inga märkta klossar registrerade'}<br>Omärkta: ${b.balance-(b.marked||[]).reduce((n,m)=>n+m.balance,0)} st</p></div><div><button data-edit="${b.id}">Uppdatera saldo</button> <button data-delete="${b.id}">Ta bort</button></div></div>`).join('')||'<p>Inga plastklossar ännu.</p>'}<details class="rules"><summary>Planerade leveranser (${state.deliveries.length})</summary><p>Leveranser är tillgängliga vid början av leveransdagen.</p><button id="delivery">Lägg till leverans</button>${state.deliveries.map(d=>`<p>${d.date} · ${esc(state.blocks.find(b=>b.id===d.block).number)} · ${d.qty} st <button data-delivery="${d.id}">Ta bort</button></p>`).join('')}</details>`;
