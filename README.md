@@ -31,7 +31,7 @@ Data sparas automatiskt i localStorage för aktuell webbläsare och webbplats. J
 
 ## Märkningslager
 
-Varje plastkloss har ett totalt saldo samt valfria underkategorier med namn och antal redan märkta klossar. Summan av märkta antal får inte överstiga totalsaldot. Samtliga gäller samma saldodatum. Ange antingen ett enskilt stämpelnamn eller en fullständig kombination; varje fysisk kloss hör till en enda kategori.
+Varje plastkloss har ett totalt saldo samt valfria underkategorier med namn och antal redan märkta klossar. Vid inventering anger du antalet omärkta och antalet för varje märkning. Totalsaldot summeras automatiskt. Alla antal gäller vid början av valt saldodatum. Har du räknat efter att dagens leveranser och produktion är klara, välj nästa dag. Ange antingen ett enskilt stämpelnamn eller en fullständig kombination; varje fysisk kloss hör till en enda kategori.
 
 Exempel: totalt 90 klossar, varav 30 med V-EMB. Receptet innehåller 6 med V-EMB och 3 utan märkningskrav. Planen 10 pallar kräver 90 klossar, varav 60 märkta: 30 finns och 30 återstår att märka. Märkta klossar är inte extra material.
 

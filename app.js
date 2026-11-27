@@ -5,18 +5,75 @@ let stockWeek = monday(today);
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),id=()=>crypto.randomUUID();
 try{const raw=localStorage.getItem(key);if(raw)state=validate(JSON.parse(raw))}catch{storageBlocked=true;$('#message').textContent='Sparade data kunde inte läsas. Originalet bevaras. Importera en giltig kopia för att fortsätta.'}
 function save(){if(storageBlocked){$('#saved').textContent='Inte sparat – importera en giltig kopia';return}try{localStorage.setItem(key,JSON.stringify(state));$('#saved').textContent='Sparat lokalt · '+new Date().toLocaleTimeString('sv-SE')}catch{$('#saved').textContent='Kunde inte spara – exportera en kopia nu'}}
-function modal(html,submit){$('#fields').innerHTML=html;$('#form').onsubmit=e=>{e.preventDefault();const previous=structuredClone(state);try{submit(new FormData(e.target));validate(state);save();$('#dialog').close();render()}catch{state=previous;let error=$('#form-error');if(!error){error=document.createElement('p');error.id='form-error';error.setAttribute('role','alert');$('#fields').append(error)}error.textContent='Kontrollera uppgifterna. Märkta klossar får inte överstiga totalt saldo. Namnen måste vara unika; märkningar som används i recept får inte tas bort.'}};$('#dialog').showModal()}
+function modal(html,submit){$('#fields').innerHTML=html;$('#form').onsubmit=e=>{e.preventDefault();const previous=structuredClone(state);try{submit(new FormData(e.target));validate(state);save();$('#dialog').close();render()}catch{state=previous;let error=$('#form-error');if(!error){error=document.createElement('p');error.id='form-error';error.setAttribute('role','alert');$('#fields').append(error)}error.textContent='Kontrollera uppgifterna. Märkningsnamn måste vara unika. Märkningar som används i recept måste finnas kvar.'}};$('#dialog').showModal()}
 $('#cancel').onclick=()=>$('#dialog').close();
 const num=(name,value='',text='Antal',min=0)=>`<label>${text}<input required type="number" min="${min}" max="100000000" step="1" name="${name}" value="${value}"></label>`;
 const text=(name,value,label)=>`<label>${label}<input required maxlength="100" name="${name}" value="${esc(value)}"></label>`;
 const day=(value=today,label='Gäller från dagens början')=>`<label>${label}<input required type="date" name="date" value="${value}"></label>`;
-function blockForm(b){
- const markedRow=m=>`<div class="marked-row"><label>Märkning<input name="markName" required maxlength="100" value="${esc(m?.name||'')}" placeholder="V-EMB + ISPM"></label><label>Redan märkta (st)<input name="markBalance" required type="number" min="0" max="100000000" value="${m?.balance||0}"></label><button type="button" class="remove-mark" aria-label="Ta bort märkning">×</button></div>`;
- modal(`<h2>${b?'Uppdatera saldo':'Ny plastkloss'}</h2>${text('number',b?.number||'','Nummer')}${text('name',b?.name||'','Namn')}${num('balance',b?.balance??0,'Saldo (st)')}${day(b?.asOf||today)}<p>Totalt saldo inkluderar redan märkta klossar. Alla antal nedan gäller samma saldodatum. Tidigare planer dras inte av igen.</p><h3>Varav märkta klossar</h3><p>En rad = en färdig kombination av stämplar, till exempel V-EMB + ISPM. Räkna varje fysisk kloss endast en gång.</p><div id="marked-rows">${(b?.marked||[]).map(markedRow).join('')}</div><button type="button" id="add-mark">Lägg till märkning</button>`,f=>{
- const marked=f.getAll('markName').map((name,i)=>({name:name.trim(),balance:+f.getAll('markBalance')[i]}));
- const data={id:b?.id||id(),number:f.get('number').trim(),name:f.get('name').trim(),balance:+f.get('balance'),asOf:f.get('date'),marked};if(!data.number||!data.name)throw Error();if(b)Object.assign(state.blocks.find(x=>x.id===b.id),data);else state.blocks.push(data)
+function blockForm(block) {
+ const markingRows = block?.marked || [];
+ const sum = counts => counts.reduce((total, count) => total + Number(count), 0);
+ const unmarked = (block?.balance ?? 0) - sum(markingRows.map(mark => mark.balance));
+ const getBalance = form => Number(form.get('unmarked')) + sum(form.getAll('markBalance'));
+ const markedRow = mark => `<div class="marked-row">
+  <label>Märkning<input name="markName" required maxlength="100" value="${esc(mark?.name || '')}" placeholder="V-EMB + ISPM"></label>
+  ${num('markBalance', mark?.balance ?? 0, 'Redan märkta (st)')}
+  <button type="button" class="remove-mark" aria-label="Ta bort märkning">×</button>
+ </div>`;
+
+ modal(`<h2>${block ? 'Uppdatera saldo' : 'Ny plastkloss'}</h2>
+  ${text('number', block?.number || '', 'Nummer')}
+  ${text('name', block?.name || '', 'Namn')}
+  <div class="stock-date">
+   ${day(block?.asOf, 'Saldodatum')}
+   <button type="button" id="stock-date-today">Idag</button>
+  </div>
+  <p>Saldot gäller vid början av vald dag, före dagens leveranser och planerade förbrukning. Om du räknar efter att dagens leveranser och produktion är klara, välj nästa dag.</p>
+  ${num('unmarked', unmarked, 'Omärkta klossar (st)')}
+  <h3>Märkta klossar</h3>
+  <p>Ange antalet för varje märkning eller kombination. Räkna varje kloss en gång.</p>
+  <div id="marked-rows">${markingRows.map(markedRow).join('')}</div>
+  <button type="button" id="add-mark">Lägg till märkning</button>
+  <div class="stock-total"><strong>Totalt saldo</strong><output id="balance-total" aria-label="Totalt saldo"></output></div>`, form => {
+  const counts = form.getAll('markBalance');
+  const marked = form.getAll('markName').map((name, index) => ({name: name.trim(), balance: Number(counts[index])}));
+  const data = {
+   id: block?.id || id(),
+   number: form.get('number').trim(),
+   name: form.get('name').trim(),
+   balance: getBalance(form),
+   asOf: form.get('date'),
+   marked
+  };
+  if (!data.number || !data.name) throw Error();
+  if (block) Object.assign(state.blocks.find(entry => entry.id === block.id), data);
+  else state.blocks.push(data);
  });
- $('#add-mark').onclick=()=>$('#marked-rows').insertAdjacentHTML('beforeend',markedRow());$('#marked-rows').onclick=e=>{if(e.target.classList.contains('remove-mark'))e.target.closest('.marked-row').remove()};
+
+ const fields = $('#fields');
+ const rows = $('#marked-rows');
+ const unmarkedInput = fields.querySelector('[name=unmarked]');
+ function showBalance() {
+  const total = getBalance(new FormData($('#form')));
+  $('#balance-total').value = `${total.toLocaleString('sv-SE')} st`;
+  if (total <= Number(unmarkedInput.max)) {
+   unmarkedInput.setCustomValidity('');
+  } else {
+   unmarkedInput.setCustomValidity(`Totalt saldo får vara högst ${Number(unmarkedInput.max).toLocaleString('sv-SE')} st.`);
+  }
+ }
+ unmarkedInput.oninput = showBalance;
+ rows.oninput = event => {
+  if (event.target.name === 'markBalance') showBalance();
+ };
+ $('#stock-date-today').onclick = () => { fields.querySelector('[name=date]').value = today; };
+ $('#add-mark').onclick = () => rows.insertAdjacentHTML('beforeend', markedRow());
+ rows.onclick = event => {
+  if (!event.target.classList.contains('remove-mark')) return;
+  event.target.closest('.marked-row').remove();
+  showBalance();
+ };
+ showBalance();
 }
 function markOptions(block,selected=''){return `<option value="">Ingen märkning krävs</option>`+(state.blocks.find(b=>b.id===block)?.marked||[]).map(m=>`<option value="${esc(m.name)}" ${m.name===selected?'selected':''}>${esc(m.name)}</option>`).join('')}
 function productForm(product) {

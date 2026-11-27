@@ -44,3 +44,24 @@
 .stock-table td { white-space: nowrap; }
 .stock-table td small { display: block; }
 .stock-table tbody th { background: #fff; }
+
+.stock-date {
+ display: flex;
+ align-items: end;
+ gap: 8px;
+}
+.stock-date label {
+ flex: 1;
+ margin: 0;
+}
+.stock-total {
+ display: flex;
+ flex-wrap: wrap;
+ justify-content: space-between;
+ gap: 8px;
+ margin-top: 16px;
+ padding: 12px;
+ border-radius: 8px;
+ background: #eaf0e5;
+ font-variant-numeric: tabular-nums;
+}
