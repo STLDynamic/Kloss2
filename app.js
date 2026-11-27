@@ -9,7 +9,7 @@ function modal(html,submit){$('#fields').innerHTML=html;$('#form').onsubmit=e=>{
 $('#cancel').onclick=()=>$('#dialog').close();
 const num=(name,value='',text='Antal',min=0)=>`<label>${text}<input required type="number" min="${min}" max="100000000" step="1" name="${name}" value="${value}"></label>`;
 const text=(name,value,label)=>`<label>${label}<input required maxlength="100" name="${name}" value="${esc(value)}"></label>`;
-const day=(value=today)=>`<label>Gäller från dagens början<input required type="date" name="date" value="${value}"></label>`;
+const day=(value=today,label='Gäller från dagens början')=>`<label>${label}<input required type="date" name="date" value="${value}"></label>`;
 function blockForm(b){
  const markedRow=m=>`<div class="marked-row"><label>Märkning<input name="markName" required maxlength="100" value="${esc(m?.name||'')}" placeholder="V-EMB + ISPM"></label><label>Redan märkta (st)<input name="markBalance" required type="number" min="0" max="100000000" value="${m?.balance||0}"></label><button type="button" class="remove-mark" aria-label="Ta bort märkning">×</button></div>`;
  modal(`<h2>${b?'Uppdatera saldo':'Ny plastkloss'}</h2>${text('number',b?.number||'','Nummer')}${text('name',b?.name||'','Namn')}${num('balance',b?.balance??0,'Saldo (st)')}${day(b?.asOf||today)}<p>Totalt saldo inkluderar redan märkta klossar. Alla antal nedan gäller samma saldodatum. Tidigare planer dras inte av igen.</p><h3>Varav märkta klossar</h3><p>En rad = en färdig kombination av stämplar, till exempel V-EMB + ISPM. Räkna varje fysisk kloss endast en gång.</p><div id="marked-rows">${(b?.marked||[]).map(markedRow).join('')}</div><button type="button" id="add-mark">Lägg till märkning</button>`,f=>{
@@ -123,7 +123,25 @@ function stockRowsHtml(summary) {
  <p class="muted">Prognos för vald vecka. Startsaldo + leveranser − reserverat = kvar på söndag. Om saldot registrerades mitt i veckan gäller beräkningen från det datumet.</p>`;
 }
 
-function render(){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));$('#content').innerHTML='';
+function deliveryForm(delivery) {
+ if (!state.blocks.length) return;
+ const options = state.blocks.map(block =>
+  `<option value="${block.id}" ${block.id === delivery?.block ? 'selected' : ''}>${esc(block.number)}</option>`
+ ).join('');
+ modal(`<h2>${delivery ? 'Redigera leverans' : 'Planerad leverans'}</h2>
+  <label>Plastkloss<select name="block">${options}</select></label>
+  ${num('qty', delivery?.qty ?? 1, 'Antal (st)', delivery?.qty === 0 ? 0 : 1)}
+  ${day(delivery?.date, 'Leveransdatum')}`, form => {
+  const data = {block: form.get('block'), qty: Number(form.get('qty')), date: form.get('date')};
+  if (delivery) {
+   state.deliveries = state.deliveries.map(entry => entry.id === delivery.id ? {...entry, ...data} : entry);
+  } else {
+   state.deliveries.push({id: id(), ...data});
+  }
+ });
+}
+
+function render(){const deliveriesOpen=$('#deliveries')?.open;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));$('#content').innerHTML='';
  if(view==='calendar'){
  const weeks = Array.from({length:8}, (_, i) => add(monday(today), (offset + i) * 7));
  if (!weeks.includes(stockWeek)) stockWeek = weeks.includes(monday(today)) ? monday(today) : weeks[0];
@@ -139,10 +157,13 @@ function render(){document.querySelectorAll('nav button').forEach(b=>b.classList
  $('#prev').onclick=()=>{offset--;render()};$('#next').onclick=()=>{offset++;render()};$('#now').onclick=()=>{offset=0;stockWeek=monday(today);render()};if($('#begin'))$('#begin').onclick=()=>blockForm();
  document.querySelectorAll('[data-week]').forEach(input=>input.onchange=()=>{if(!input.checkValidity()){input.reportValidity();return}const w=input.dataset.week,p=input.dataset.product;state.plans[w]??={};if(input.value==='')delete state.plans[w][p];else state.plans[w][p]=+input.value;save();render()});
  }else if(view==='blocks'){
- $('#content').innerHTML=`<div class="toolbar"><h2>Plastklossar</h2><button id="new" class="primary">Lägg till plastkloss</button></div>${state.blocks.map(b=>`<div class="card"><div><h3>${esc(b.number)} · ${esc(b.name)}</h3><span class="muted">Saldo vid början av ${b.asOf}</span></div><div><strong>${b.balance.toLocaleString('sv-SE')} st totalt</strong><p class="muted">${(b.marked||[]).map(m=>`${esc(m.name)}: ${m.balance} st`).join('<br>')||'Inga märkta klossar registrerade'}<br>Omärkta: ${b.balance-(b.marked||[]).reduce((n,m)=>n+m.balance,0)} st</p></div><div><button data-edit="${b.id}">Uppdatera saldo</button> <button data-delete="${b.id}">Ta bort</button></div></div>`).join('')||'<p>Inga plastklossar ännu.</p>'}<details class="rules"><summary>Planerade leveranser (${state.deliveries.length})</summary><p>Leveranser är tillgängliga vid början av leveransdagen.</p><button id="delivery">Lägg till leverans</button>${state.deliveries.map(d=>`<p>${d.date} · ${esc(state.blocks.find(b=>b.id===d.block).number)} · ${d.qty} st <button data-delivery="${d.id}">Ta bort</button></p>`).join('')}</details>`;
+ $('#content').innerHTML=`<div class="toolbar"><h2>Plastklossar</h2><button id="new" class="primary">Lägg till plastkloss</button></div>${state.blocks.map(b=>`<div class="card"><div><h3>${esc(b.number)} · ${esc(b.name)}</h3><span class="muted">Saldo vid början av ${b.asOf}</span></div><div><strong>${b.balance.toLocaleString('sv-SE')} st totalt</strong><p class="muted">${(b.marked||[]).map(m=>`${esc(m.name)}: ${m.balance} st`).join('<br>')||'Inga märkta klossar registrerade'}<br>Omärkta: ${b.balance-(b.marked||[]).reduce((n,m)=>n+m.balance,0)} st</p></div><div><button data-edit="${b.id}">Uppdatera saldo</button> <button data-delete="${b.id}">Ta bort</button></div></div>`).join('')||'<p>Inga plastklossar ännu.</p>'}<details id="deliveries" class="rules" ${deliveriesOpen ? 'open' : ''}><summary>Planerade leveranser (${state.deliveries.length})</summary><p>Leveranser är tillgängliga vid början av leveransdagen.</p><button id="delivery">Lägg till leverans</button>${state.deliveries.map(d=>`<p>${d.date} · ${esc(state.blocks.find(b=>b.id===d.block).number)} · ${d.qty} st <button data-edit-delivery="${d.id}">Redigera</button> <button data-delivery="${d.id}">Ta bort</button></p>`).join('')}</details>`;
  $('#new').onclick=()=>blockForm();document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>blockForm(state.blocks.find(x=>x.id===b.dataset.edit)));
  document.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>{const id=b.dataset.delete;if(state.products.some(p=>p.recipe.some(r=>r.block===id))||state.deliveries.some(d=>d.block===id)){$('#message').textContent='Klossen används i ett recept eller en leverans och kan inte tas bort.';return}if(confirm('Ta bort plastklossen?')){state.blocks=state.blocks.filter(x=>x.id!==id);save();render()}});
- $('#delivery').onclick=()=>{if(!state.blocks.length)return;modal(`<h2>Planerad leverans</h2><label>Plastkloss<select name="block">${state.blocks.map(b=>`<option value="${b.id}">${esc(b.number)}</option>`).join('')}</select></label>${num('qty',1,'Antal (st)',1)}${day()}`,f=>state.deliveries.push({id:id(),block:f.get('block'),qty:+f.get('qty'),date:f.get('date')}))};
+ $('#delivery').onclick = () => deliveryForm();
+ document.querySelectorAll('[data-edit-delivery]').forEach(button => {
+  button.onclick = () => deliveryForm(state.deliveries.find(entry => entry.id === button.dataset.editDelivery));
+ });
  document.querySelectorAll('[data-delivery]').forEach(b=>b.onclick=()=>{if(confirm('Ta bort leveransen?')){state.deliveries=state.deliveries.filter(d=>d.id!==b.dataset.delivery);save();render()}});
  }else{
  $('#content').innerHTML=`<div class="toolbar"><h2>Produkter / Recept</h2><button id="new" class="primary">Lägg till produkt</button></div><p class="muted">Ordningen styr materialprioritet inom varje dag. Ändringar i recept gäller alla planer.</p>${state.products.map((p,i)=>`<div class="card"><div><h3>${i+1}. ${esc(p.name)}</h3><span class="muted">${p.recipe.map(r=>`${esc(state.blocks.find(b=>b.id===r.block).number)}: ${r.qty} st / pall${r.mark?' · '+esc(r.mark):' · utan märkningskrav'}`).join('<br>')}</span></div><div><button data-up="${i}" ${i===0?'disabled':''} aria-label="Höj prioritet för ${esc(p.name)}">↑</button> <button data-edit="${p.id}">Redigera</button></div></div>`).join('')}`;
