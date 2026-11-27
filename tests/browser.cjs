@@ -31,7 +31,12 @@ const assert=require('node:assert/strict');
  await page.reload();
  const firstPlan = page.locator('tbody td').nth(1);
  assert.equal(await firstPlan.locator('.need').innerText(), 'P75: 150 st');
+ const summary = firstPlan.locator('.stamping summary');
  const stamping = firstPlan.locator('.stamping p');
+ assert.equal(await summary.innerText(), 'Att märka');
+ assert.equal(await stamping.first().isVisible(), false);
+ await summary.click();
+ assert.equal(await stamping.first().isVisible(), true);
  assert.equal(await stamping.count(), 3);
  for (const [index, [name, balance]] of marks.entries()) {
   const line = await stamping.nth(index).innerText();
@@ -39,4 +44,6 @@ const assert=require('node:assert/strict');
   assert.ok(line.includes(`Behov: 50 st · Redan märkta: ${balance} st`));
   assert.ok(line.includes(`Att märka: ${50 - balance} st`));
  }
+ await summary.press('Enter');
+ assert.equal(await stamping.first().isVisible(), false);
  const downloadPromise=page.waitForEvent('download');await page.getByRole('button',{name:'Exportera JSON'}).click();const download=await downloadPromise;await download.saveAs('/tmp/kloss-backup.json');const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('kloss2-v1')));page.on('dialog',d=>d.accept());await page.locator('#import').setInputFiles('/tmp/kloss-backup.json');await page.waitForFunction(()=>document.querySelector('#message').textContent.includes('importerats'));assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('kloss2-v1'))),saved);await page.locator('#import').setInputFiles({name:'bad.json',mimeType:'application/json',buffer:Buffer.from('{"version":0}')});await page.waitForFunction(()=>document.querySelector('#message').textContent.includes('kunde inte'));assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('kloss2-v1'))),saved);await page.setViewportSize({width:390,height:844});const first=page.locator('tbody td').first();const x=(await first.boundingBox()).x;await page.locator('.table-wrap').evaluate(e=>e.scrollLeft=300);assert.equal((await first.boundingBox()).x,x);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:'/tmp/kloss-mobile.png',fullPage:true});assert.deepEqual(errors,[]);console.log('PASS: stamped inventory and recipe persistence, stamping forecast, UI creation, calendar edit/reload, blank/zero, JSON roundtrip, invalid import preservation, mobile overflow and sticky column; no browser errors.');await browser.close()})().catch(e=>{console.error(e);process.exit(1)});

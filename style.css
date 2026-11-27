@@ -15,3 +15,9 @@
 .recipe-row label:first-child { grid-column: 1 / -1; }
 .recipe-row select, .recipe-row input { min-width: 0; }
 .recipe-row .remove { padding-inline: 10px; }
+.stamping summary {
+ font-weight: 700;
+ color: #294a36;
+ padding-block: 4px;
+}
+.stamping summary:hover { text-decoration: underline; }

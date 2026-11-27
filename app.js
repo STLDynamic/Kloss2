@@ -66,7 +66,20 @@ function productForm(product) {
   if (event.target.classList.contains('remove')) event.target.closest('.recipe-row').remove();
  };
 }
-function stampingHtml(r){if(!r.stamping.length)return '';return `<div class="stamping"><strong>Märkning</strong>${r.stamping.map(m=>`<p>${esc(state.blocks.find(b=>b.id===m.block).number)} · ${esc(m.name)}<br>Behov: ${m.need} st · Redan märkta: ${m.prepared} st<br><b>Att märka: ${m.toStamp} st</b></p>`).join('')}<small>${r.ready} hela pallar med befintlig märkning och material. Att märka är arbetsbehov; kontrollera materialbrist separat.</small></div>`}
+function stampingHtml(result) {
+ if (!result.stamping.length) return '';
+ const rows = result.stamping.map(mark => {
+  const block = state.blocks.find(b => b.id === mark.block);
+  return `<p>${esc(block.number)} · ${esc(mark.name)}<br>
+   Behov: ${mark.need} st · Redan märkta: ${mark.prepared} st<br>
+   <b>Att märka: ${mark.toStamp} st</b></p>`;
+ }).join('');
+ return `<details class="stamping">
+  <summary>Att märka</summary>
+  ${rows}
+  <small>${result.ready} hela pallar med befintlig märkning och material. Att märka är arbetsbehov. Kontrollera materialbrist separat.</small>
+ </details>`;
+}
 function render(){document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));$('#content').innerHTML='';
  if(view==='calendar'){
  const weeks=Array.from({length:8},(_,i)=>add(monday(today),(offset+i)*7)),result=forecast(state);
